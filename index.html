@@ -1,0 +1,963 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PulseForge — Rhythm Generator</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        display: ['Syne', 'sans-serif'],
+                        mono: ['Space Mono', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        :root {
+            --bg: #08080D;
+            --bg-card: #0F0F18;
+            --border: #1E1E2E;
+            --border-active: #2E2E44;
+            --fg: #E8E4DD;
+            --muted: #5E5B72;
+            --accent: #E8A838;
+            --accent-dim: #9B7028;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            background: var(--bg);
+            color: var(--fg);
+            font-family: 'Space Mono', monospace;
+            overflow-x: hidden;
+        }
+
+        /* Subtle animated background */
+        body::before {
+            content: '';
+            position: fixed;
+            inset: -50%;
+            width: 200%;
+            height: 200%;
+            background:
+                radial-gradient(circle at 25% 35%, rgba(232,168,56,0.03) 0%, transparent 45%),
+                radial-gradient(circle at 75% 65%, rgba(255,82,82,0.02) 0%, transparent 45%),
+                radial-gradient(circle at 50% 90%, rgba(61,255,162,0.015) 0%, transparent 40%);
+            animation: bgDrift 25s ease-in-out infinite;
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        @keyframes bgDrift {
+            0%, 100% { transform: translate(0, 0) rotate(0deg); }
+            33% { transform: translate(2%, -1%) rotate(0.5deg); }
+            66% { transform: translate(-1%, 2%) rotate(-0.3deg); }
+        }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar { width: 5px; height: 5px; }
+        ::-webkit-scrollbar-track { background: var(--bg); }
+        ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+        /* Range inputs */
+        input[type="range"] {
+            -webkit-appearance: none;
+            appearance: none;
+            background: transparent;
+            cursor: pointer;
+            width: 100%;
+            height: 20px;
+        }
+        input[type="range"]::-webkit-slider-track {
+            height: 3px;
+            background: var(--border);
+            border-radius: 2px;
+        }
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            height: 14px;
+            width: 14px;
+            border-radius: 50%;
+            background: var(--accent);
+            margin-top: -5.5px;
+            border: 2px solid var(--bg);
+            transition: transform 0.15s, box-shadow 0.15s;
+        }
+        input[type="range"]::-webkit-slider-thumb:hover {
+            transform: scale(1.25);
+            box-shadow: 0 0 8px rgba(232,168,56,0.5);
+        }
+        input[type="range"]::-moz-range-track {
+            height: 3px;
+            background: var(--border);
+            border-radius: 2px;
+            border: none;
+        }
+        input[type="range"]::-moz-range-thumb {
+            height: 14px;
+            width: 14px;
+            border-radius: 50%;
+            background: var(--accent);
+            border: 2px solid var(--bg);
+        }
+
+        /* Toggle */
+        .toggle {
+            position: relative;
+            width: 40px;
+            height: 22px;
+            background: var(--border);
+            border-radius: 11px;
+            cursor: pointer;
+            transition: background 0.3s;
+            flex-shrink: 0;
+        }
+        .toggle.on { background: var(--accent); }
+        .toggle::after {
+            content: '';
+            position: absolute;
+            top: 3px;
+            left: 3px;
+            width: 16px;
+            height: 16px;
+            background: var(--fg);
+            border-radius: 50%;
+            transition: transform 0.3s;
+        }
+        .toggle.on::after { transform: translateX(18px); }
+
+        /* Band card */
+        .band-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 16px;
+            transition: border-color 0.4s, box-shadow 0.4s;
+            position: relative;
+            overflow: hidden;
+        }
+        .band-card::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0;
+            width: 4px;
+            height: 100%;
+            background: var(--band-color);
+            opacity: 0.25;
+            transition: opacity 0.4s;
+        }
+        .band-card.active::before { opacity: 1; }
+        .band-card.active {
+            border-color: var(--band-color);
+            box-shadow: 0 0 30px -10px var(--band-color);
+        }
+
+        /* Select */
+        select {
+            background: var(--bg);
+            color: var(--fg);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 3px 6px;
+            font-family: 'Space Mono', monospace;
+            font-size: 10px;
+            cursor: pointer;
+            outline: none;
+        }
+        select:focus { border-color: var(--accent); }
+
+        /* Play button */
+        .play-btn {
+            background: var(--accent);
+            color: var(--bg);
+            border: none;
+            padding: 10px 28px;
+            border-radius: 10px;
+            font-family: 'Syne', sans-serif;
+            font-weight: 700;
+            font-size: 13px;
+            cursor: pointer;
+            transition: all 0.25s;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+        }
+        .play-btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 20px rgba(232,168,56,0.4);
+        }
+        .play-btn:active { transform: scale(0.97); }
+        .play-btn.playing { background: #E84855; }
+        .play-btn.playing:hover { box-shadow: 0 4px 20px rgba(232,72,85,0.4); }
+
+        /* Small buttons */
+        .sm-btn {
+            font-size: 10px;
+            padding: 4px 10px;
+            border-radius: 6px;
+            border: 1px solid var(--border);
+            background: transparent;
+            color: var(--muted);
+            cursor: pointer;
+            font-family: 'Space Mono', monospace;
+            transition: all 0.2s;
+        }
+        .sm-btn:hover { border-color: var(--accent); color: var(--fg); }
+
+        /* LFO mini canvas */
+        .lfo-canvas {
+            width: 100%;
+            height: 36px;
+            border-radius: 6px;
+            display: block;
+        }
+
+        /* Pulse dot */
+        .pulse-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: var(--band-color);
+            opacity: 0.2;
+            transition: opacity 0.1s, transform 0.1s;
+        }
+        .pulse-dot.lit {
+            opacity: 1;
+            box-shadow: 0 0 8px var(--band-color);
+        }
+
+        /* Label */
+        .ctrl-label {
+            font-size: 9px;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            color: var(--muted);
+            white-space: nowrap;
+        }
+        .ctrl-val {
+            font-size: 10px;
+            color: var(--accent);
+            font-weight: 700;
+            min-width: 48px;
+            text-align: right;
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after {
+                animation-duration: 0.01ms !important;
+                transition-duration: 0.01ms !important;
+            }
+        }
+    </style>
+</head>
+<body class="min-h-screen">
+    <div class="relative z-10 max-w-[1440px] mx-auto px-4 py-5">
+
+        <!-- Header -->
+        <header class="flex flex-wrap items-center justify-between gap-4 mb-5">
+            <div>
+                <h1 class="font-display text-2xl sm:text-3xl font-extrabold tracking-tight" style="color:var(--accent)">
+                    PULSEFORGE
+                </h1>
+                <p class="text-xs mt-0.5" style="color:var(--muted)">Multi-band rhythm generator with LFO modulation</p>
+            </div>
+            <div class="flex items-center gap-4 sm:gap-6 flex-wrap">
+                <div class="flex items-center gap-2">
+                    <span class="ctrl-label">Vol</span>
+                    <input type="range" id="master-vol" min="0" max="1" step="0.01" value="0.5" class="w-20 sm:w-28">
+                    <span id="master-vol-val" class="ctrl-val">50%</span>
+                </div>
+                <button id="play-btn" class="play-btn" aria-label="Start or stop all bands">
+                    <i class="fas fa-play mr-1.5"></i>START
+                </button>
+            </div>
+        </header>
+
+        <!-- Visualization -->
+        <section class="mb-5">
+            <div class="rounded-2xl overflow-hidden border" style="border-color:var(--border);background:var(--bg-card)">
+                <canvas id="viz-canvas" style="width:100%;height:300px;display:block"></canvas>
+            </div>
+            <div class="mt-2 rounded-xl overflow-hidden border" style="border-color:var(--border);background:var(--bg-card)">
+                <canvas id="wave-canvas" style="width:100%;height:48px;display:block"></canvas>
+            </div>
+        </section>
+
+        <!-- Band Controls -->
+        <section>
+            <div class="flex items-center justify-between mb-3">
+                <h2 class="font-display text-base font-bold" style="color:var(--fg)">Frequency Bands</h2>
+                <div class="flex gap-2">
+                    <button id="btn-enable-all" class="sm-btn">Enable All</button>
+                    <button id="btn-disable-all" class="sm-btn">Disable All</button>
+                </div>
+            </div>
+            <div id="bands-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3"></div>
+        </section>
+
+        <!-- Footer -->
+        <footer class="mt-8 pb-4 text-center">
+            <p class="text-xs" style="color:var(--muted)">PulseForge uses the Web Audio API. No data leaves your browser.</p>
+        </footer>
+    </div>
+
+    <script>
+    // =========================================================
+    // Configuration
+    // =========================================================
+    const BAND_DEFS = [
+        { name:'Delta',  color:'#FF5252', rgb:'255,82,82',   carrier:55,  pLow:0.5, pHigh:4,  dur:8,  shape:'triangle', vol:0.55, sharp:2, cType:'sine' },
+        { name:'Theta',  color:'#E8A838', rgb:'232,168,56',  carrier:110, pLow:4,   pHigh:8,  dur:10, shape:'sine',     vol:0.45, sharp:2, cType:'sine' },
+        { name:'Alpha',  color:'#3DFFA2', rgb:'61,255,162',  carrier:220, pLow:8,   pHigh:14, dur:12, shape:'triangle', vol:0.35, sharp:2, cType:'triangle' },
+        { name:'Beta',   color:'#FF6B9D', rgb:'255,107,157', carrier:440, pLow:14,  pHigh:30, dur:15, shape:'ramp',     vol:0.25, sharp:2, cType:'triangle' },
+        { name:'Gamma',  color:'#C9A0FF', rgb:'201,160,255', carrier:880, pLow:30,  pHigh:50, dur:20, shape:'sine',     vol:0.18, sharp:3, cType:'sine' },
+    ];
+
+    // =========================================================
+    // State
+    // =========================================================
+    let audioCtx = null, masterGain = null, compressor = null, analyser = null;
+    let isPlaying = false, lastTime = 0;
+
+    const bands = BAND_DEFS.map(d => ({
+        ...d,
+        enabled: false,
+        phase: 0,
+        lfoPhase: 0,
+        curFreq: d.pLow,
+        pulseVal: 0,
+        osc: null,
+        gain: null,
+        particles: [],
+    }));
+
+    // =========================================================
+    // DOM references
+    // =========================================================
+    const vizCanvas  = document.getElementById('viz-canvas');
+    const vizCtx     = vizCanvas.getContext('2d');
+    const waveCanvas = document.getElementById('wave-canvas');
+    const waveCtx    = waveCanvas.getContext('2d');
+    const bandsGrid  = document.getElementById('bands-grid');
+
+    // =========================================================
+    // Build band cards
+    // =========================================================
+    bands.forEach((band, i) => {
+        const card = document.createElement('div');
+        card.className = 'band-card';
+        card.style.setProperty('--band-color', band.color);
+        card.id = `band-card-${i}`;
+
+        card.innerHTML = `
+            <!-- Header -->
+            <div class="flex items-center justify-between mb-2">
+                <div class="flex items-center gap-2">
+                    <div class="toggle" id="toggle-${i}" role="switch" aria-label="Toggle ${band.name}" tabindex="0"></div>
+                    <span class="font-display font-bold text-sm" style="color:${band.color}">${band.name}</span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <span class="text-xs font-bold" id="freq-display-${i}" style="color:${band.color}">${band.pLow.toFixed(1)} Hz</span>
+                    <div class="pulse-dot" id="dot-${i}" style="--band-color:${band.color}"></div>
+                </div>
+            </div>
+
+            <!-- LFO mini canvas -->
+            <canvas class="lfo-canvas mb-3" id="lfo-canvas-${i}" style="background:rgba(0,0,0,0.25)"></canvas>
+
+            <!-- Carrier -->
+            <div class="flex items-center gap-2 mb-2">
+                <span class="ctrl-label w-12">Carrier</span>
+                <input type="range" min="20" max="2000" step="1" value="${band.carrier}" class="flex-1" id="carrier-${i}">
+                <select id="ctype-${i}" class="flex-shrink-0" aria-label="Carrier waveform">
+                    <option value="sine" ${band.cType==='sine'?'selected':''}>Sine</option>
+                    <option value="triangle" ${band.cType==='triangle'?'selected':''}>Tri</option>
+                    <option value="sawtooth" ${band.cType==='sawtooth'?'selected':''}>Saw</option>
+                    <option value="square" ${band.cType==='square'?'selected':''}>Sq</option>
+                </select>
+            </div>
+            <div class="flex justify-end mb-2 -mt-1"><span class="ctrl-val" id="carrier-val-${i}">${band.carrier} Hz</span></div>
+
+            <!-- Pulse Low -->
+            <div class="flex items-center gap-2 mb-1">
+                <span class="ctrl-label w-12">Low</span>
+                <input type="range" min="0.1" max="60" step="0.1" value="${band.pLow}" class="flex-1" id="plow-${i}">
+                <span class="ctrl-val" id="plow-val-${i}">${band.pLow.toFixed(1)} Hz</span>
+            </div>
+
+            <!-- Pulse High -->
+            <div class="flex items-center gap-2 mb-1">
+                <span class="ctrl-label w-12">High</span>
+                <input type="range" min="0.1" max="60" step="0.1" value="${band.pHigh}" class="flex-1" id="phigh-${i}">
+                <span class="ctrl-val" id="phigh-val-${i}">${band.pHigh.toFixed(1)} Hz</span>
+            </div>
+
+            <!-- LFO Duration -->
+            <div class="flex items-center gap-2 mb-1">
+                <span class="ctrl-label w-12">Dur</span>
+                <input type="range" min="1" max="60" step="0.5" value="${band.dur}" class="flex-1" id="dur-${i}">
+                <span class="ctrl-val" id="dur-val-${i}">${band.dur.toFixed(1)} s</span>
+            </div>
+
+            <!-- LFO Shape -->
+            <div class="flex items-center gap-2 mb-1">
+                <span class="ctrl-label w-12">Shape</span>
+                <select id="shape-${i}" class="flex-1" aria-label="LFO shape">
+                    <option value="ramp" ${band.shape==='ramp'?'selected':''}>Ramp</option>
+                    <option value="triangle" ${band.shape==='triangle'?'selected':''}>Triangle</option>
+                    <option value="sine" ${band.shape==='sine'?'selected':''}>Sine</option>
+                </select>
+            </div>
+
+            <!-- Volume -->
+            <div class="flex items-center gap-2 mb-1">
+                <span class="ctrl-label w-12">Vol</span>
+                <input type="range" min="0" max="1" step="0.01" value="${band.vol}" class="flex-1" id="vol-${i}">
+                <span class="ctrl-val" id="vol-val-${i}">${Math.round(band.vol*100)}%</span>
+            </div>
+
+            <!-- Sharpness -->
+            <div class="flex items-center gap-2">
+                <span class="ctrl-label w-12">Sharp</span>
+                <input type="range" min="1" max="8" step="0.5" value="${band.sharp}" class="flex-1" id="sharp-${i}">
+                <span class="ctrl-val" id="sharp-val-${i}">${band.sharp.toFixed(1)}</span>
+            </div>
+        `;
+        bandsGrid.appendChild(card);
+    });
+
+    // =========================================================
+    // Audio engine
+    // =========================================================
+    function initAudio() {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        masterGain = audioCtx.createGain();
+        masterGain.gain.value = parseFloat(document.getElementById('master-vol').value);
+
+        compressor = audioCtx.createDynamicsCompressor();
+        compressor.threshold.value = -12;
+        compressor.knee.value = 10;
+        compressor.ratio.value = 6;
+        compressor.attack.value = 0.003;
+        compressor.release.value = 0.15;
+
+        analyser = audioCtx.createAnalyser();
+        analyser.fftSize = 2048;
+
+        masterGain.connect(compressor);
+        compressor.connect(analyser);
+        analyser.connect(audioCtx.destination);
+    }
+
+    function ensureAudio() {
+        if (!audioCtx) initAudio();
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+    }
+
+    function startBand(b) {
+        ensureAudio();
+        b.osc = audioCtx.createOscillator();
+        b.osc.frequency.value = b.carrier;
+        b.osc.type = b.cType;
+        b.gain = audioCtx.createGain();
+        b.gain.gain.value = 0;
+        b.osc.connect(b.gain);
+        b.gain.connect(masterGain);
+        b.osc.start();
+        b.enabled = true;
+        b.phase = 0;
+        b.lfoPhase = 0;
+    }
+
+    function stopBand(b) {
+        if (b.osc) {
+            try { b.osc.stop(); } catch(_) {}
+            b.osc.disconnect();
+            b.gain.disconnect();
+        }
+        b.osc = null;
+        b.gain = null;
+        b.enabled = false;
+        // Let pulseVal decay visually
+    }
+
+    function updateBand(b, dt) {
+        if (b.enabled && b.gain) {
+            // Advance LFO phase
+            b.lfoPhase += dt / Math.max(0.1, b.dur);
+            while (b.lfoPhase >= 1) b.lfoPhase -= 1;
+            while (b.lfoPhase < 0) b.lfoPhase += 1;
+
+            // LFO value
+            let lv;
+            switch (b.shape) {
+                case 'ramp':     lv = b.lfoPhase; break;
+                case 'triangle': lv = b.lfoPhase < 0.5 ? b.lfoPhase * 2 : 2 - b.lfoPhase * 2; break;
+                case 'sine':     lv = 0.5 - 0.5 * Math.cos(b.lfoPhase * Math.PI * 2); break;
+                default:         lv = b.lfoPhase;
+            }
+
+            b.curFreq = b.pLow + (b.pHigh - b.pLow) * lv;
+            b.phase += b.curFreq * dt;
+
+            const sinV = Math.sin(b.phase * Math.PI * 2);
+            b.pulseVal = Math.pow(Math.max(0, sinV), b.sharp) * b.vol;
+
+            b.gain.gain.setTargetAtTime(b.pulseVal, audioCtx.currentTime, 0.004);
+        } else {
+            // Smooth decay
+            b.pulseVal *= Math.exp(-10 * dt);
+            if (b.pulseVal < 0.001) b.pulseVal = 0;
+        }
+    }
+
+    // =========================================================
+    // Particles
+    // =========================================================
+    function emitParticle(b, baseR) {
+        const a = Math.random() * Math.PI * 2;
+        b.particles.push({
+            a, r: baseR,
+            speed: 25 + Math.random() * 50,
+            life: 1,
+            decay: 0.6 + Math.random() * 1.2,
+            size: 1.5 + Math.random() * 2.5,
+        });
+    }
+
+    function updateParticles(b, dt) {
+        for (let j = b.particles.length - 1; j >= 0; j--) {
+            const p = b.particles[j];
+            p.r += p.speed * dt;
+            p.life -= p.decay * dt;
+            if (p.life <= 0) b.particles.splice(j, 1);
+        }
+    }
+
+    // =========================================================
+    // Canvas setup
+    // =========================================================
+    let vizW, vizH, waveW, waveH;
+
+    function resizeCanvases() {
+        const dpr = window.devicePixelRatio || 1;
+
+        vizW = vizCanvas.clientWidth;
+        vizH = vizCanvas.clientHeight;
+        vizCanvas.width = vizW * dpr;
+        vizCanvas.height = vizH * dpr;
+        vizCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+        waveW = waveCanvas.clientWidth;
+        waveH = waveCanvas.clientHeight;
+        waveCanvas.width = waveW * dpr;
+        waveCanvas.height = waveH * dpr;
+        waveCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+        // LFO mini canvases
+        bands.forEach((b, i) => {
+            const c = document.getElementById(`lfo-canvas-${i}`);
+            if (!c) return;
+            c.width = c.clientWidth * dpr;
+            c.height = c.clientHeight * dpr;
+            c.getContext('2d').setTransform(dpr, 0, 0, dpr, 0, 0);
+        });
+    }
+
+    // =========================================================
+    // Drawing
+    // =========================================================
+    function drawViz() {
+        const cx = vizW / 2;
+        const cy = vizH / 2;
+
+        // Clear
+        vizCtx.fillStyle = '#08080D';
+        vizCtx.fillRect(0, 0, vizW, vizH);
+
+        // Subtle grid
+        vizCtx.strokeStyle = 'rgba(30,30,50,0.35)';
+        vizCtx.lineWidth = 0.5;
+        const gridSize = 40;
+        for (let x = gridSize; x < vizW; x += gridSize) {
+            vizCtx.beginPath();
+            vizCtx.moveTo(x, 0);
+            vizCtx.lineTo(x, vizH);
+            vizCtx.stroke();
+        }
+        for (let y = gridSize; y < vizH; y += gridSize) {
+            vizCtx.beginPath();
+            vizCtx.moveTo(0, y);
+            vizCtx.lineTo(vizW, y);
+            vizCtx.stroke();
+        }
+
+        // Draw bands
+        bands.forEach((b, i) => {
+            const baseR = Math.max(20, 25 + i * (Math.min(vizH, vizW) * 0.07));
+            const pR = baseR + b.pulseVal * 22;
+
+            // Inactive ring
+            if (!b.enabled && b.pulseVal < 0.01) {
+                vizCtx.beginPath();
+                vizCtx.arc(cx, cy, baseR, 0, Math.PI * 2);
+                vizCtx.strokeStyle = b.color;
+                vizCtx.lineWidth = 0.5;
+                vizCtx.globalAlpha = 0.08;
+                vizCtx.stroke();
+                vizCtx.globalAlpha = 1;
+                return;
+            }
+
+            // Glow ring
+            vizCtx.save();
+            vizCtx.shadowBlur = 12 + b.pulseVal * 25;
+            vizCtx.shadowColor = b.color;
+            vizCtx.beginPath();
+            vizCtx.arc(cx, cy, pR, 0, Math.PI * 2);
+            vizCtx.strokeStyle = b.color;
+            vizCtx.lineWidth = 1.5 + b.pulseVal * 3;
+            vizCtx.globalAlpha = 0.35 + b.pulseVal * 0.65;
+            vizCtx.stroke();
+            vizCtx.restore();
+
+            // Inner fill
+            const grad = vizCtx.createRadialGradient(cx, cy, Math.max(1, pR - 10), cx, cy, pR + 4);
+            grad.addColorStop(0, 'rgba(' + b.rgb + ',0)');
+            grad.addColorStop(1, 'rgba(' + b.rgb + ',' + (b.pulseVal * 0.15).toFixed(3) + ')');
+            vizCtx.beginPath();
+            vizCtx.arc(cx, cy, pR + 4, 0, Math.PI * 2);
+            vizCtx.fillStyle = grad;
+            vizCtx.fill();
+
+            // Particles
+            b.particles.forEach(p => {
+                const px = cx + Math.cos(p.a) * p.r;
+                const py = cy + Math.sin(p.a) * p.r;
+                vizCtx.beginPath();
+                vizCtx.arc(px, py, Math.max(0.5, p.size * p.life), 0, Math.PI * 2);
+                vizCtx.fillStyle = b.color;
+                vizCtx.globalAlpha = p.life * 0.6;
+                vizCtx.fill();
+                vizCtx.globalAlpha = 1;
+            });
+
+            // Emit particles on pulse peaks
+            if (b.pulseVal > 0.7 * b.vol && Math.random() < 0.35) {
+                emitParticle(b, pR);
+            }
+
+            // Label
+            vizCtx.font = '9px "Space Mono"';
+            vizCtx.fillStyle = b.color;
+            vizCtx.globalAlpha = 0.5 + b.pulseVal * 0.5;
+            vizCtx.textAlign = 'center';
+            vizCtx.fillText(b.name, cx, cy - pR - 8);
+            vizCtx.globalAlpha = 1;
+        });
+
+        // Center glow
+        const total = bands.reduce((s, b) => s + b.pulseVal, 0);
+        const avg = total / bands.length;
+        const cR = Math.max(1, 8 + avg * 18);
+        const cGrad = vizCtx.createRadialGradient(cx, cy, 0, cx, cy, cR);
+        cGrad.addColorStop(0, `rgba(232,168,56,${(0.6 + avg * 0.4).toFixed(3)})`);
+        cGrad.addColorStop(1, 'rgba(232,168,56,0)');
+        vizCtx.beginPath();
+        vizCtx.arc(cx, cy, cR, 0, Math.PI * 2);
+        vizCtx.fillStyle = cGrad;
+        vizCtx.fill();
+    }
+
+    function drawWaveform() {
+        waveCtx.fillStyle = '#08080D';
+        waveCtx.fillRect(0, 0, waveW, waveH);
+
+        if (!analyser) {
+            // Idle line
+            waveCtx.strokeStyle = 'rgba(232,168,56,0.15)';
+            waveCtx.lineWidth = 1;
+            waveCtx.beginPath();
+            waveCtx.moveTo(0, waveH / 2);
+            waveCtx.lineTo(waveW, waveH / 2);
+            waveCtx.stroke();
+            return;
+        }
+
+        const buf = new Uint8Array(analyser.frequencyBinCount);
+        analyser.getByteTimeDomainData(buf);
+
+        waveCtx.strokeStyle = 'rgba(232,168,56,0.6)';
+        waveCtx.lineWidth = 1.5;
+        waveCtx.beginPath();
+        const sliceW = waveW / buf.length;
+        for (let i = 0; i < buf.length; i++) {
+            const v = buf[i] / 128.0;
+            const y = v * waveH / 2;
+            if (i === 0) waveCtx.moveTo(0, y);
+            else waveCtx.lineTo(i * sliceW, y);
+        }
+        waveCtx.stroke();
+    }
+
+    function drawLFOMini(b, i) {
+        const c = document.getElementById(`lfo-canvas-${i}`);
+        if (!c) return;
+        const ctx = c.getContext('2d');
+        const w = c.clientWidth;
+        const h = c.clientHeight;
+
+        ctx.clearRect(0, 0, w, h);
+
+        // Fill
+        ctx.fillStyle = 'rgba(8,8,13,0.6)';
+        ctx.fillRect(0, 0, w, h);
+
+        // Horizontal guides
+        ctx.strokeStyle = 'rgba(30,30,50,0.5)';
+        ctx.lineWidth = 0.5;
+        [0.25, 0.5, 0.75].forEach(f => {
+            ctx.beginPath();
+            ctx.moveTo(0, h * f);
+            ctx.lineTo(w, h * f);
+            ctx.stroke();
+        });
+
+        // Curve
+        ctx.beginPath();
+        ctx.strokeStyle = b.color;
+        ctx.lineWidth = 1.5;
+        const range = Math.max(0.01, b.pHigh - b.pLow);
+        for (let px = 0; px <= w; px++) {
+            const phase = px / w;
+            let lv;
+            switch (b.shape) {
+                case 'ramp':     lv = phase; break;
+                case 'triangle': lv = phase < 0.5 ? phase * 2 : 2 - phase * 2; break;
+                case 'sine':     lv = 0.5 - 0.5 * Math.cos(phase * Math.PI * 2); break;
+                default:         lv = phase;
+            }
+            const norm = (b.pLow + range * lv - b.pLow) / range;
+            const y = h - norm * h * 0.8 - h * 0.1;
+            if (px === 0) ctx.moveTo(px, y);
+            else ctx.lineTo(px, y);
+        }
+        ctx.stroke();
+
+        // Fill under curve
+        ctx.lineTo(w, h);
+        ctx.lineTo(0, h);
+        ctx.closePath();
+        ctx.fillStyle = `rgba(${b.rgb},0.08)`;
+        ctx.fill();
+
+        // Position dot
+        const dotX = b.lfoPhase * w;
+        let dotLv;
+        switch (b.shape) {
+            case 'ramp':     dotLv = b.lfoPhase; break;
+            case 'triangle': dotLv = b.lfoPhase < 0.5 ? b.lfoPhase * 2 : 2 - b.lfoPhase * 2; break;
+            case 'sine':     dotLv = 0.5 - 0.5 * Math.cos(b.lfoPhase * Math.PI * 2); break;
+            default:         dotLv = b.lfoPhase;
+        }
+        const dotNorm = dotLv;
+        const dotY = h - dotNorm * h * 0.8 - h * 0.1;
+
+        // Vertical line
+        ctx.strokeStyle = `rgba(${b.rgb},0.3)`;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(dotX, 0);
+        ctx.lineTo(dotX, h);
+        ctx.stroke();
+
+        // Dot
+        ctx.beginPath();
+        ctx.arc(dotX, dotY, 4, 0, Math.PI * 2);
+        ctx.fillStyle = b.color;
+        ctx.fill();
+        ctx.strokeStyle = '#08080D';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+    }
+
+    // =========================================================
+    // UI updates
+    // =========================================================
+    function updateUI() {
+        bands.forEach((b, i) => {
+            // Card active state
+            const card = document.getElementById(`band-card-${i}`);
+            card.classList.toggle('active', b.enabled);
+
+            // Toggle
+            const toggle = document.getElementById(`toggle-${i}`);
+            toggle.classList.toggle('on', b.enabled);
+
+            // Pulse dot
+            const dot = document.getElementById(`dot-${i}`);
+            dot.classList.toggle('lit', b.pulseVal > 0.15);
+            const scale = 1 + b.pulseVal * 1.5;
+            dot.style.transform = `scale(${scale})`;
+
+            // Freq display
+            const fd = document.getElementById(`freq-display-${i}`);
+            fd.textContent = b.curFreq.toFixed(1) + ' Hz';
+        });
+    }
+
+    // =========================================================
+    // Animation loop
+    // =========================================================
+    function animate(time) {
+        const dt = Math.min((time - lastTime) / 1000, 0.1);
+        lastTime = time;
+
+        // Update bands
+        bands.forEach(b => {
+            updateBand(b, dt);
+            updateParticles(b, dt);
+        });
+
+        // Draw
+        drawViz();
+        drawWaveform();
+        bands.forEach((b, i) => drawLFOMini(b, i));
+        updateUI();
+
+        requestAnimationFrame(animate);
+    }
+
+    // =========================================================
+    // Event handlers
+    // =========================================================
+
+    // Play / Stop
+    document.getElementById('play-btn').addEventListener('click', () => {
+        if (!isPlaying) {
+            ensureAudio();
+            bands.forEach(b => { if (b.enabled) startBand(b); });
+            isPlaying = true;
+            document.getElementById('play-btn').innerHTML = '<i class="fas fa-stop mr-1.5"></i>STOP';
+            document.getElementById('play-btn').classList.add('playing');
+        } else {
+            bands.forEach(b => stopBand(b));
+            isPlaying = false;
+            document.getElementById('play-btn').innerHTML = '<i class="fas fa-play mr-1.5"></i>START';
+            document.getElementById('play-btn').classList.remove('playing');
+        }
+    });
+
+    // Master volume
+    document.getElementById('master-vol').addEventListener('input', e => {
+        const v = parseFloat(e.target.value);
+        document.getElementById('master-vol-val').textContent = Math.round(v * 100) + '%';
+        if (masterGain) masterGain.gain.setTargetAtTime(v, audioCtx.currentTime, 0.02);
+    });
+
+    // Toggles
+    bands.forEach((b, i) => {
+        const toggle = document.getElementById(`toggle-${i}`);
+        const handler = () => {
+            if (!b.enabled) {
+                b.enabled = true;
+                if (isPlaying) startBand(b);
+            } else {
+                b.enabled = false;
+                if (isPlaying) stopBand(b);
+            }
+        };
+        toggle.addEventListener('click', handler);
+        toggle.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handler(); } });
+    });
+
+    // Band parameter controls
+    bands.forEach((b, i) => {
+        // Carrier freq
+        const carrierEl = document.getElementById(`carrier-${i}`);
+        carrierEl.addEventListener('input', e => {
+            b.carrier = parseFloat(e.target.value);
+            document.getElementById(`carrier-val-${i}`).textContent = b.carrier + ' Hz';
+            if (b.osc) b.osc.frequency.setTargetAtTime(b.carrier, audioCtx.currentTime, 0.02);
+        });
+
+        // Carrier type
+        document.getElementById(`ctype-${i}`).addEventListener('change', e => {
+            b.cType = e.target.value;
+            if (b.osc) b.osc.type = b.cType;
+        });
+
+        // Pulse low
+        document.getElementById(`plow-${i}`).addEventListener('input', e => {
+            b.pLow = parseFloat(e.target.value);
+            document.getElementById(`plow-val-${i}`).textContent = b.pLow.toFixed(1) + ' Hz';
+        });
+
+        // Pulse high
+        document.getElementById(`phigh-${i}`).addEventListener('input', e => {
+            b.pHigh = parseFloat(e.target.value);
+            document.getElementById(`phigh-val-${i}`).textContent = b.pHigh.toFixed(1) + ' Hz';
+        });
+
+        // Duration
+        document.getElementById(`dur-${i}`).addEventListener('input', e => {
+            b.dur = parseFloat(e.target.value);
+            document.getElementById(`dur-val-${i}`).textContent = b.dur.toFixed(1) + ' s';
+        });
+
+        // Shape
+        document.getElementById(`shape-${i}`).addEventListener('change', e => {
+            b.shape = e.target.value;
+        });
+
+        // Volume
+        document.getElementById(`vol-${i}`).addEventListener('input', e => {
+            b.vol = parseFloat(e.target.value);
+            document.getElementById(`vol-val-${i}`).textContent = Math.round(b.vol * 100) + '%';
+        });
+
+        // Sharpness
+        document.getElementById(`sharp-${i}`).addEventListener('input', e => {
+            b.sharp = parseFloat(e.target.value);
+            document.getElementById(`sharp-val-${i}`).textContent = b.sharp.toFixed(1);
+        });
+    });
+
+    // Enable / Disable all
+    document.getElementById('btn-enable-all').addEventListener('click', () => {
+        bands.forEach((b, i) => {
+            if (!b.enabled) {
+                b.enabled = true;
+                if (isPlaying) startBand(b);
+            }
+        });
+    });
+    document.getElementById('btn-disable-all').addEventListener('click', () => {
+        bands.forEach((b, i) => {
+            if (b.enabled) {
+                b.enabled = false;
+                if (isPlaying) stopBand(b);
+            }
+        });
+    });
+
+    // Resize
+    window.addEventListener('resize', resizeCanvases);
+
+    // =========================================================
+    // Init
+    // =========================================================
+    resizeCanvases();
+    lastTime = performance.now();
+    requestAnimationFrame(animate);
+    </script>
+</body>
+  </html>
