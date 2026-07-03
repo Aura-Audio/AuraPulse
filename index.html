@@ -267,7 +267,7 @@
                 <h1 class="font-display text-2xl sm:text-3xl font-extrabold tracking-tight" style="color:var(--accent)">
                     PULSEFORGE
                 </h1>
-                <p class="text-xs mt-0.5" style="color:var(--muted)">Multi-band rhythm generator with LFO modulation</p>
+                <p class="text-xs mt-0.5" style="color:var(--muted)">Multi-band rhythm generator with Filter & Spatial Modulation</p>
             </div>
             <div class="flex items-center gap-4 sm:gap-6 flex-wrap">
                 <div class="flex items-center gap-2">
@@ -314,11 +314,11 @@
     // Configuration
     // =========================================================
     const BAND_DEFS = [
-        { name:'Delta',  color:'#FF5252', rgb:'255,82,82',   carrier:55,  pLow:0.5, pHigh:4,  dur:8,  shape:'triangle', vol:0.55, sharp:2, cType:'sine' },
-        { name:'Theta',  color:'#E8A838', rgb:'232,168,56',  carrier:110, pLow:4,   pHigh:8,  dur:10, shape:'sine',     vol:0.45, sharp:2, cType:'sine' },
-        { name:'Alpha',  color:'#3DFFA2', rgb:'61,255,162',  carrier:220, pLow:8,   pHigh:14, dur:12, shape:'triangle', vol:0.35, sharp:2, cType:'triangle' },
-        { name:'Beta',   color:'#FF6B9D', rgb:'255,107,157', carrier:440, pLow:14,  pHigh:30, dur:15, shape:'ramp',     vol:0.25, sharp:2, cType:'triangle' },
-        { name:'Gamma',  color:'#C9A0FF', rgb:'201,160,255', carrier:880, pLow:30,  pHigh:50, dur:20, shape:'sine',     vol:0.18, sharp:3, cType:'sine' },
+        { name:'Delta',  color:'#FF5252', rgb:'255,82,82',   carrier:55,  pLow:0.5, pHigh:4,  dur:8,  shape:'triangle', vol:0.55, sharp:2, cType:'sine', filterFreq: 400, filterQ: 4, filterLFORate: 0.5, filterLFODepth: 200, pan: -0.4 },
+        { name:'Theta',  color:'#E8A838', rgb:'232,168,56',  carrier:110, pLow:4,   pHigh:8,  dur:10, shape:'sine',     vol:0.45, sharp:2, cType:'sine', filterFreq: 800, filterQ: 1, filterLFORate: 1, filterLFODepth: 0, pan: -0.2 },
+        { name:'Alpha',  color:'#3DFFA2', rgb:'61,255,162',  carrier:220, pLow:8,   pHigh:14, dur:12, shape:'triangle', vol:0.35, sharp:2, cType:'triangle', filterFreq: 2000, filterQ: 1, filterLFORate: 2, filterLFODepth: 0, pan: 0 },
+        { name:'Beta',   color:'#FF6B9D', rgb:'255,107,157', carrier:440, pLow:14,  pHigh:30, dur:15, shape:'ramp',     vol:0.25, sharp:2, cType:'triangle', filterFreq: 4000, filterQ: 1, filterLFORate: 3, filterLFODepth: 0, pan: 0.2 },
+        { name:'Gamma',  color:'#C9A0FF', rgb:'201,160,255', carrier:880, pLow:30,  pHigh:50, dur:20, shape:'sine',     vol:0.18, sharp:3, cType:'sine', filterFreq: 8000, filterQ: 1, filterLFORate: 4, filterLFODepth: 0, pan: 0.4 },
     ];
 
     // =========================================================
@@ -334,8 +334,15 @@
         lfoPhase: 0,
         curFreq: d.pLow,
         pulseVal: 0,
+        
+        // Audio Nodes
         osc: null,
         gain: null,
+        filter: null,
+        panner: null,
+        filterLFO: null,
+        filterLFOGain: null,
+        
         particles: [],
     }));
 
@@ -425,10 +432,55 @@
             </div>
 
             <!-- Sharpness -->
-            <div class="flex items-center gap-2">
+            <div class="flex items-center gap-2 mb-3">
                 <span class="ctrl-label w-12">Sharp</span>
                 <input type="range" min="1" max="8" step="0.5" value="${band.sharp}" class="flex-1" id="sharp-${i}">
                 <span class="ctrl-val" id="sharp-val-${i}">${band.sharp.toFixed(1)}</span>
+            </div>
+
+            <!-- FX & Space Section -->
+            <div class="border-t border-[var(--border)] pt-3 space-y-2">
+                <span class="text-[10px] font-bold uppercase tracking-wider block mb-1" style="color:${band.color}">FX & Space</span>
+                
+                <!-- Pan -->
+                <div class="flex items-center gap-2">
+                    <span class="ctrl-label w-12">Pan</span>
+                    <input type="range" min="-100" max="100" step="1" value="${band.pan * 100}" class="flex-1" id="pan-${i}">
+                    <span class="ctrl-val w-10" id="pan-val-${i}">${band.pan === 0 ? 'C' : (band.pan > 0 ? 'R' : 'L')}${Math.abs(Math.round(band.pan * 100))}</span>
+                </div>
+
+                <!-- Filter Type & Freq -->
+                <div class="flex items-center gap-2">
+                    <span class="ctrl-label w-12">Filter</span>
+                    <select id="ftype-${i}" class="w-20" aria-label="Filter type">
+                        <option value="lowpass" ${band.filterType==='lowpass'?'selected':''}>LPF</option>
+                        <option value="highpass" ${band.filterType==='highpass'?'selected':''}>HPF</option>
+                        <option value="bandpass" ${band.filterType==='bandpass'?'selected':''}>BPF</option>
+                    </select>
+                    <input type="range" min="20" max="20000" step="10" value="${band.filterFreq}" class="flex-1" id="ffreq-${i}">
+                    <span class="ctrl-val w-16 text-right" id="ffreq-val-${i}">${band.filterFreq}Hz</span>
+                </div>
+
+                <!-- Resonance (Q) -->
+                <div class="flex items-center gap-2">
+                    <span class="ctrl-label w-12">Res</span>
+                    <input type="range" min="0.1" max="20" step="0.1" value="${band.filterQ}" class="flex-1" id="fq-${i}">
+                    <span class="ctrl-val" id="fq-val-${i}">${band.filterQ.toFixed(1)}</span>
+                </div>
+
+                <!-- Filter LFO Rate -->
+                <div class="flex items-center gap-2">
+                    <span class="ctrl-label w-12">F.LFO</span>
+                    <input type="range" min="0.05" max="10" step="0.05" value="${band.filterLFORate}" class="flex-1" id="flforate-${i}">
+                    <span class="ctrl-val w-12" id="flforate-val-${i}">${band.filterLFORate.toFixed(2)}Hz</span>
+                </div>
+
+                <!-- Filter LFO Depth -->
+                <div class="flex items-center gap-2">
+                    <span class="ctrl-label w-12">F.Dpth</span>
+                    <input type="range" min="0" max="10000" step="10" value="${band.filterLFODepth}" class="flex-1" id="flfodepth-${i}">
+                    <span class="ctrl-val" id="flfodepth-val-${i}">${band.filterLFODepth}</span>
+                </div>
             </div>
         `;
         bandsGrid.appendChild(card);
@@ -464,29 +516,60 @@
 
     function startBand(b) {
         ensureAudio();
+        
+        // 1. Oscillator & Gain (Amplitude)
         b.osc = audioCtx.createOscillator();
         b.osc.frequency.value = b.carrier;
         b.osc.type = b.cType;
         b.gain = audioCtx.createGain();
         b.gain.gain.value = 0;
+        
+        // 2. Filter
+        b.filter = audioCtx.createBiquadFilter();
+        b.filter.type = b.filterType || 'lowpass';
+        b.filter.frequency.value = b.filterFreq;
+        b.filter.Q.value = b.filterQ;
+
+        // 3. Panner
+        b.panner = audioCtx.createStereoPanner();
+        b.panner.pan.value = b.pan;
+
+        // 4. Filter LFO & Depth Gain
+        b.filterLFO = audioCtx.createOscillator();
+        b.filterLFO.type = 'sine';
+        b.filterLFO.frequency.value = b.filterLFORate;
+        b.filterLFOGain = audioCtx.createGain();
+        b.filterLFOGain.gain.value = b.filterLFODepth;
+
+        // Routing: Osc -> Gain -> Filter -> Panner -> Master
         b.osc.connect(b.gain);
-        b.gain.connect(masterGain);
+        b.gain.connect(b.filter);
+        b.filter.connect(b.panner);
+        b.panner.connect(masterGain);
+
+        // Filter LFO Routing: LFO -> DepthGain -> Filter Cutoff
+        b.filterLFO.connect(b.filterLFOGain);
+        b.filterLFOGain.connect(b.filter.frequency);
+
         b.osc.start();
+        b.filterLFO.start();
+        
         b.enabled = true;
         b.phase = 0;
         b.lfoPhase = 0;
     }
 
     function stopBand(b) {
-        if (b.osc) {
-            try { b.osc.stop(); } catch(_) {}
-            b.osc.disconnect();
-            b.gain.disconnect();
-        }
-        b.osc = null;
-        b.gain = null;
+        if (b.osc) { try { b.osc.stop(); } catch(_) {} b.osc.disconnect(); }
+        if (b.filterLFO) { try { b.filterLFO.stop(); } catch(_) {} b.filterLFO.disconnect(); }
+        if (b.gain) b.gain.disconnect();
+        if (b.filter) b.filter.disconnect();
+        if (b.panner) b.panner.disconnect();
+        if (b.filterLFOGain) b.filterLFOGain.disconnect();
+        
+        b.osc = null; b.gain = null; b.filter = null; b.panner = null; 
+        b.filterLFO = null; b.filterLFOGain = null;
         b.enabled = false;
-        // Let pulseVal decay visually
     }
 
     function updateBand(b, dt) {
@@ -507,6 +590,7 @@
 
             b.curFreq = b.pLow + (b.pHigh - b.pLow) * lv;
             b.phase += b.curFreq * dt;
+            b.phase = b.phase - Math.floor(b.phase); // Prevent floating point drift
 
             const sinV = Math.sin(b.phase * Math.PI * 2);
             b.pulseVal = Math.pow(Math.max(0, sinV), b.sharp) * b.vol;
@@ -522,10 +606,12 @@
     // =========================================================
     // Particles
     // =========================================================
-    function emitParticle(b, baseR) {
+    function emitParticle(b, baseR, bandCx) {
         const a = Math.random() * Math.PI * 2;
         b.particles.push({
             a, r: baseR,
+            cx: bandCx, // Store the center X at the time of emission
+            cy: vizH / 2,
             speed: 25 + Math.random() * 50,
             life: 1,
             decay: 0.6 + Math.random() * 1.2,
@@ -588,27 +674,25 @@
         vizCtx.lineWidth = 0.5;
         const gridSize = 40;
         for (let x = gridSize; x < vizW; x += gridSize) {
-            vizCtx.beginPath();
-            vizCtx.moveTo(x, 0);
-            vizCtx.lineTo(x, vizH);
-            vizCtx.stroke();
+            vizCtx.beginPath(); vizCtx.moveTo(x, 0); vizCtx.lineTo(x, vizH); vizCtx.stroke();
         }
         for (let y = gridSize; y < vizH; y += gridSize) {
-            vizCtx.beginPath();
-            vizCtx.moveTo(0, y);
-            vizCtx.lineTo(vizW, y);
-            vizCtx.stroke();
+            vizCtx.beginPath(); vizCtx.moveTo(0, y); vizCtx.lineTo(vizW, y); vizCtx.stroke();
         }
 
         // Draw bands
         bands.forEach((b, i) => {
+            // Calculate Pan Offset for Visuals (Max 20% of width)
+            const panOffset = b.pan * (vizW * 0.2); 
+            const bandCx = cx + panOffset;
+
             const baseR = Math.max(20, 25 + i * (Math.min(vizH, vizW) * 0.07));
             const pR = baseR + b.pulseVal * 22;
 
             // Inactive ring
             if (!b.enabled && b.pulseVal < 0.01) {
                 vizCtx.beginPath();
-                vizCtx.arc(cx, cy, baseR, 0, Math.PI * 2);
+                vizCtx.arc(bandCx, cy, baseR, 0, Math.PI * 2);
                 vizCtx.strokeStyle = b.color;
                 vizCtx.lineWidth = 0.5;
                 vizCtx.globalAlpha = 0.08;
@@ -617,31 +701,34 @@
                 return;
             }
 
-            // Glow ring
+            // Glow ring (Simulated shadowBlur for performance)
             vizCtx.save();
-            vizCtx.shadowBlur = 12 + b.pulseVal * 25;
-            vizCtx.shadowColor = b.color;
             vizCtx.beginPath();
-            vizCtx.arc(cx, cy, pR, 0, Math.PI * 2);
+            vizCtx.arc(bandCx, cy, pR, 0, Math.PI * 2);
             vizCtx.strokeStyle = b.color;
             vizCtx.lineWidth = 1.5 + b.pulseVal * 3;
             vizCtx.globalAlpha = 0.35 + b.pulseVal * 0.65;
             vizCtx.stroke();
+            
+            // Extra glow passes
+            vizCtx.lineWidth = 4 + b.pulseVal * 8;
+            vizCtx.globalAlpha = 0.1 + b.pulseVal * 0.2;
+            vizCtx.stroke();
             vizCtx.restore();
 
             // Inner fill
-            const grad = vizCtx.createRadialGradient(cx, cy, Math.max(1, pR - 10), cx, cy, pR + 4);
+            const grad = vizCtx.createRadialGradient(bandCx, cy, Math.max(1, pR - 10), bandCx, cy, pR + 4);
             grad.addColorStop(0, 'rgba(' + b.rgb + ',0)');
             grad.addColorStop(1, 'rgba(' + b.rgb + ',' + (b.pulseVal * 0.15).toFixed(3) + ')');
             vizCtx.beginPath();
-            vizCtx.arc(cx, cy, pR + 4, 0, Math.PI * 2);
+            vizCtx.arc(bandCx, cy, pR + 4, 0, Math.PI * 2);
             vizCtx.fillStyle = grad;
             vizCtx.fill();
 
             // Particles
             b.particles.forEach(p => {
-                const px = cx + Math.cos(p.a) * p.r;
-                const py = cy + Math.sin(p.a) * p.r;
+                const px = p.cx + Math.cos(p.a) * p.r; // Use stored cx
+                const py = p.cy + Math.sin(p.a) * p.r;
                 vizCtx.beginPath();
                 vizCtx.arc(px, py, Math.max(0.5, p.size * p.life), 0, Math.PI * 2);
                 vizCtx.fillStyle = b.color;
@@ -652,7 +739,7 @@
 
             // Emit particles on pulse peaks
             if (b.pulseVal > 0.7 * b.vol && Math.random() < 0.35) {
-                emitParticle(b, pR);
+                emitParticle(b, pR, bandCx);
             }
 
             // Label
@@ -660,11 +747,11 @@
             vizCtx.fillStyle = b.color;
             vizCtx.globalAlpha = 0.5 + b.pulseVal * 0.5;
             vizCtx.textAlign = 'center';
-            vizCtx.fillText(b.name, cx, cy - pR - 8);
+            vizCtx.fillText(b.name, bandCx, cy - pR - 8);
             vizCtx.globalAlpha = 1;
         });
 
-        // Center glow
+        // Center glow (stays in absolute center)
         const total = bands.reduce((s, b) => s + b.pulseVal, 0);
         const avg = total / bands.length;
         const cR = Math.max(1, 8 + avg * 18);
@@ -682,7 +769,6 @@
         waveCtx.fillRect(0, 0, waveW, waveH);
 
         if (!analyser) {
-            // Idle line
             waveCtx.strokeStyle = 'rgba(232,168,56,0.15)';
             waveCtx.lineWidth = 1;
             waveCtx.beginPath();
@@ -716,22 +802,15 @@
         const h = c.clientHeight;
 
         ctx.clearRect(0, 0, w, h);
-
-        // Fill
         ctx.fillStyle = 'rgba(8,8,13,0.6)';
         ctx.fillRect(0, 0, w, h);
 
-        // Horizontal guides
         ctx.strokeStyle = 'rgba(30,30,50,0.5)';
         ctx.lineWidth = 0.5;
         [0.25, 0.5, 0.75].forEach(f => {
-            ctx.beginPath();
-            ctx.moveTo(0, h * f);
-            ctx.lineTo(w, h * f);
-            ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(0, h * f); ctx.lineTo(w, h * f); ctx.stroke();
         });
 
-        // Curve
         ctx.beginPath();
         ctx.strokeStyle = b.color;
         ctx.lineWidth = 1.5;
@@ -745,21 +824,15 @@
                 case 'sine':     lv = 0.5 - 0.5 * Math.cos(phase * Math.PI * 2); break;
                 default:         lv = phase;
             }
-            const norm = (b.pLow + range * lv - b.pLow) / range;
-            const y = h - norm * h * 0.8 - h * 0.1;
-            if (px === 0) ctx.moveTo(px, y);
-            else ctx.lineTo(px, y);
+            const y = h - lv * h * 0.8 - h * 0.1;
+            if (px === 0) ctx.moveTo(px, y); else ctx.lineTo(px, y);
         }
         ctx.stroke();
 
-        // Fill under curve
-        ctx.lineTo(w, h);
-        ctx.lineTo(0, h);
-        ctx.closePath();
+        ctx.lineTo(w, h); ctx.lineTo(0, h); ctx.closePath();
         ctx.fillStyle = `rgba(${b.rgb},0.08)`;
         ctx.fill();
 
-        // Position dot
         const dotX = b.lfoPhase * w;
         let dotLv;
         switch (b.shape) {
@@ -768,25 +841,15 @@
             case 'sine':     dotLv = 0.5 - 0.5 * Math.cos(b.lfoPhase * Math.PI * 2); break;
             default:         dotLv = b.lfoPhase;
         }
-        const dotNorm = dotLv;
-        const dotY = h - dotNorm * h * 0.8 - h * 0.1;
+        const dotY = h - dotLv * h * 0.8 - h * 0.1;
 
-        // Vertical line
         ctx.strokeStyle = `rgba(${b.rgb},0.3)`;
         ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.moveTo(dotX, 0);
-        ctx.lineTo(dotX, h);
-        ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(dotX, 0); ctx.lineTo(dotX, h); ctx.stroke();
 
-        // Dot
-        ctx.beginPath();
-        ctx.arc(dotX, dotY, 4, 0, Math.PI * 2);
-        ctx.fillStyle = b.color;
-        ctx.fill();
-        ctx.strokeStyle = '#08080D';
-        ctx.lineWidth = 1.5;
-        ctx.stroke();
+        ctx.beginPath(); ctx.arc(dotX, dotY, 4, 0, Math.PI * 2);
+        ctx.fillStyle = b.color; ctx.fill();
+        ctx.strokeStyle = '#08080D'; ctx.lineWidth = 1.5; ctx.stroke();
     }
 
     // =========================================================
@@ -794,21 +857,17 @@
     // =========================================================
     function updateUI() {
         bands.forEach((b, i) => {
-            // Card active state
             const card = document.getElementById(`band-card-${i}`);
             card.classList.toggle('active', b.enabled);
 
-            // Toggle
             const toggle = document.getElementById(`toggle-${i}`);
             toggle.classList.toggle('on', b.enabled);
 
-            // Pulse dot
             const dot = document.getElementById(`dot-${i}`);
             dot.classList.toggle('lit', b.pulseVal > 0.15);
             const scale = 1 + b.pulseVal * 1.5;
             dot.style.transform = `scale(${scale})`;
 
-            // Freq display
             const fd = document.getElementById(`freq-display-${i}`);
             fd.textContent = b.curFreq.toFixed(1) + ' Hz';
         });
@@ -821,13 +880,11 @@
         const dt = Math.min((time - lastTime) / 1000, 0.1);
         lastTime = time;
 
-        // Update bands
         bands.forEach(b => {
             updateBand(b, dt);
             updateParticles(b, dt);
         });
 
-        // Draw
         drawViz();
         drawWaveform();
         bands.forEach((b, i) => drawLFOMini(b, i));
@@ -840,7 +897,6 @@
     // Event handlers
     // =========================================================
 
-    // Play / Stop
     document.getElementById('play-btn').addEventListener('click', () => {
         if (!isPlaying) {
             ensureAudio();
@@ -856,14 +912,12 @@
         }
     });
 
-    // Master volume
     document.getElementById('master-vol').addEventListener('input', e => {
         const v = parseFloat(e.target.value);
         document.getElementById('master-vol-val').textContent = Math.round(v * 100) + '%';
         if (masterGain) masterGain.gain.setTargetAtTime(v, audioCtx.currentTime, 0.02);
     });
 
-    // Toggles
     bands.forEach((b, i) => {
         const toggle = document.getElementById(`toggle-${i}`);
         const handler = () => {
@@ -879,59 +933,87 @@
         toggle.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handler(); } });
     });
 
-    // Band parameter controls
     bands.forEach((b, i) => {
-        // Carrier freq
-        const carrierEl = document.getElementById(`carrier-${i}`);
-        carrierEl.addEventListener('input', e => {
+        document.getElementById(`carrier-${i}`).addEventListener('input', e => {
             b.carrier = parseFloat(e.target.value);
             document.getElementById(`carrier-val-${i}`).textContent = b.carrier + ' Hz';
             if (b.osc) b.osc.frequency.setTargetAtTime(b.carrier, audioCtx.currentTime, 0.02);
         });
 
-        // Carrier type
         document.getElementById(`ctype-${i}`).addEventListener('change', e => {
             b.cType = e.target.value;
             if (b.osc) b.osc.type = b.cType;
         });
 
-        // Pulse low
         document.getElementById(`plow-${i}`).addEventListener('input', e => {
             b.pLow = parseFloat(e.target.value);
             document.getElementById(`plow-val-${i}`).textContent = b.pLow.toFixed(1) + ' Hz';
         });
 
-        // Pulse high
         document.getElementById(`phigh-${i}`).addEventListener('input', e => {
             b.pHigh = parseFloat(e.target.value);
             document.getElementById(`phigh-val-${i}`).textContent = b.pHigh.toFixed(1) + ' Hz';
         });
 
-        // Duration
         document.getElementById(`dur-${i}`).addEventListener('input', e => {
             b.dur = parseFloat(e.target.value);
             document.getElementById(`dur-val-${i}`).textContent = b.dur.toFixed(1) + ' s';
         });
 
-        // Shape
         document.getElementById(`shape-${i}`).addEventListener('change', e => {
             b.shape = e.target.value;
         });
 
-        // Volume
         document.getElementById(`vol-${i}`).addEventListener('input', e => {
             b.vol = parseFloat(e.target.value);
             document.getElementById(`vol-val-${i}`).textContent = Math.round(b.vol * 100) + '%';
         });
 
-        // Sharpness
         document.getElementById(`sharp-${i}`).addEventListener('input', e => {
             b.sharp = parseFloat(e.target.value);
             document.getElementById(`sharp-val-${i}`).textContent = b.sharp.toFixed(1);
         });
+
+        // --- NEW FX CONTROLS ---
+        
+        document.getElementById(`pan-${i}`).addEventListener('input', e => {
+            const val = parseInt(e.target.value);
+            b.pan = val / 100;
+            const display = val === 0 ? 'C' : (val > 0 ? 'R' : 'L') + Math.abs(val);
+            document.getElementById(`pan-val-${i}`).textContent = display;
+            if (b.panner) b.panner.pan.setTargetAtTime(b.pan, audioCtx.currentTime, 0.02);
+        });
+
+        document.getElementById(`ftype-${i}`).addEventListener('change', e => {
+            b.filterType = e.target.value;
+            if (b.filter) b.filter.type = b.filterType;
+        });
+
+        document.getElementById(`ffreq-${i}`).addEventListener('input', e => {
+            b.filterFreq = parseFloat(e.target.value);
+            document.getElementById(`ffreq-val-${i}`).textContent = b.filterFreq + 'Hz';
+            if (b.filter) b.filter.frequency.setTargetAtTime(b.filterFreq, audioCtx.currentTime, 0.02);
+        });
+
+        document.getElementById(`fq-${i}`).addEventListener('input', e => {
+            b.filterQ = parseFloat(e.target.value);
+            document.getElementById(`fq-val-${i}`).textContent = b.filterQ.toFixed(1);
+            if (b.filter) b.filter.Q.setTargetAtTime(b.filterQ, audioCtx.currentTime, 0.02);
+        });
+
+        document.getElementById(`flforate-${i}`).addEventListener('input', e => {
+            b.filterLFORate = parseFloat(e.target.value);
+            document.getElementById(`flforate-val-${i}`).textContent = b.filterLFORate.toFixed(2) + 'Hz';
+            if (b.filterLFO) b.filterLFO.frequency.setTargetAtTime(b.filterLFORate, audioCtx.currentTime, 0.02);
+        });
+
+        document.getElementById(`flfodepth-${i}`).addEventListener('input', e => {
+            b.filterLFODepth = parseFloat(e.target.value);
+            document.getElementById(`flfodepth-val-${i}`).textContent = b.filterLFODepth;
+            if (b.filterLFOGain) b.filterLFOGain.gain.setTargetAtTime(b.filterLFODepth, audioCtx.currentTime, 0.02);
+        });
     });
 
-    // Enable / Disable all
     document.getElementById('btn-enable-all').addEventListener('click', () => {
         bands.forEach((b, i) => {
             if (!b.enabled) {
@@ -949,7 +1031,6 @@
         });
     });
 
-    // Resize
     window.addEventListener('resize', resizeCanvases);
 
     // =========================================================
@@ -960,4 +1041,4 @@
     requestAnimationFrame(animate);
     </script>
 </body>
-  </html>
+    </html>
